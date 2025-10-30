@@ -1,75 +1,254 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Dashboard Metas - Tráfego Pago</title>
-  <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 20px; }
-    h1 { color: #333; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; background: #fff; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-    th { background-color: #007bff; color: white; }
-    tr:nth-child(even) { background-color: #f9f9f9; }
-    input, button { padding: 6px; margin: 4px; }
-    .form-box { background: #fff; padding: 10px; border-radius: 8px; }
-  </style>
-</head>
-<body>
-  <h1>Dashboard de Metas - Tráfego Pago</h1>
+/*
+Traffic Goals Dashboard - React (single-file component)
 
-  <div class="form-box">
-    <input id="cliente" placeholder="Nome do cliente">
-    <input id="investido" type="number" placeholder="Valor investido (R$)">
-    <input id="meta" type="number" placeholder="Meta de leads">
-    <input id="alcançado" type="number" placeholder="Leads alcançados">
-    <button onclick="adicionarCliente()">Adicionar</button>
-  </div>
+How to use
+1. Create a React app (e.g. `create-react-app` or Vite).
+2. Install and configure Tailwind CSS (optional but recommended for styling).
+3. Replace your src/App.jsx with this file (or import the default export into your app).
+4. Open the app and you can add multiple clients, edit, delete, export CSV. Data is persisted in localStorage.
 
-  <table id="tabela">
-    <thead>
-      <tr>
-        <th>Cliente</th>
-        <th>Investido (R$)</th>
-        <th>Meta</th>
-        <th>Alcançado</th>
-        <th>Faltam</th>
-        <th>% Atingido</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+Notes
+- This component is intentionally self-contained and minimal so you can push it to GitHub Pages.
+- If you want server persistence later, swap localStorage calls for API calls.
+*/
 
-  <script>
-    const tabela = document.querySelector("#tabela tbody");
+import React, { useEffect, useState } from "react";
 
-    function adicionarCliente() {
-      const cliente = document.getElementById("cliente").value.trim();
-      const investido = Number(document.getElementById("investido").value);
-      const meta = Number(document.getElementById("meta").value);
-      const alcançado = Number(document.getElementById("alcançado").value);
+export default function TrafficGoalsDashboard() {
+  const STORAGE_KEY = "traffic_goals_clients_v1";
 
-      if (!cliente || !meta) return alert("Preencha pelo menos o nome e a meta!");
+  const sample = [
+    {
+      id: crypto?.randomUUID?.() ?? Date.now() + "-1",
+      name: "Loja Exemplo",
+      invested: 1200,
+      metaLeads: 200,
+      leadsAchieved: 120,
+    },
+  ];
 
-      const faltam = Math.max(0, meta - alcançado);
-      const porcentagem = meta > 0 ? Math.round((alcançado / meta) * 100) : 0;
-
-      const linha = document.createElement("tr");
-      linha.innerHTML = `
-        <td>${cliente}</td>
-        <td>R$ ${investido.toLocaleString('pt-BR')}</td>
-        <td>${meta}</td>
-        <td>${alcançado}</td>
-        <td>${faltam}</td>
-        <td>${porcentagem}%</td>
-      `;
-      tabela.appendChild(linha);
-
-      document.getElementById("cliente").value = "";
-      document.getElementById("investido").value = "";
-      document.getElementById("meta").value = "";
-      document.getElementById("alcançado").value = "";
+  const [clients, setClients] = useState(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : sample;
+    } catch (e) {
+      return sample;
     }
-  </script>
-</body>
-</html>
+  });
+
+  const [form, setForm] = useState({ name: "", invested: "", metaLeads: "", leadsAchieved: "" });
+  const [editingId, setEditingId] = useState(null);
+  const [filter, setFilter] = useState("");
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(clients));
+  }, [clients]);
+
+  function resetForm() {
+    setForm({ name: "", invested: "", metaLeads: "", leadsAchieved: "" });
+    setEditingId(null);
+  }
+
+  function validateAndNormalize(f) {
+    const name = f.name.trim();
+    const invested = Number(f.invested) || 0;
+    const metaLeads = Math.max(0, Math.floor(Number(f.metaLeads) || 0));
+    const leadsAchieved = Math.max(0, Math.floor(Number(f.leadsAchieved) || 0));
+    return { name, invested, metaLeads, leadsAchieved };
+  }
+
+  function handleAddOrUpdate(e) {
+    e.preventDefault();
+    const normalized = validateAndNormalize(form);
+    if (!normalized.name) {
+      alert("Informe o nome do cliente.");
+      return;
+    }
+
+    if (editingId) {
+      setClients((prev) => prev.map((c) => (c.id === editingId ? { ...c, ...normalized } : c)));
+    } else {
+      const newClient = { id: crypto?.randomUUID?.() ?? Date.now().toString(), ...normalized };
+      setClients((prev) => [newClient, ...prev]);
+    }
+    resetForm();
+  }
+
+  function handleEdit(id) {
+    const c = clients.find((x) => x.id === id);
+    if (!c) return;
+    setEditingId(id);
+    setForm({ name: c.name, invested: String(c.invested), metaLeads: String(c.metaLeads), leadsAchieved: String(c.leadsAchieved) });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function handleDelete(id) {
+    if (!confirm("Remover este cliente?")) return;
+    setClients((prev) => prev.filter((c) => c.id !== id));
+  }
+
+  function computeRemaining(c) {
+    return Math.max(0, c.metaLeads - c.leadsAchieved);
+  }
+
+  function computePercent(c) {
+    if (!c.metaLeads) return 0;
+    return Math.min(100, Math.round((c.leadsAchieved / c.metaLeads) * 100));
+  }
+
+  function totals() {
+    const totalInvested = clients.reduce((s, c) => s + Number(c.invested || 0), 0);
+    const totalMeta = clients.reduce((s, c) => s + Number(c.metaLeads || 0), 0);
+    const totalLeads = clients.reduce((s, c) => s + Number(c.leadsAchieved || 0), 0);
+    const totalRemaining = Math.max(0, totalMeta - totalLeads);
+    const avgPercent = totalMeta ? Math.round((totalLeads / totalMeta) * 100) : 0;
+    return { totalInvested, totalMeta, totalLeads, totalRemaining, avgPercent };
+  }
+
+  function exportCSV() {
+    const header = ["Cliente", "Investido", "MetaLeads", "LeadsAlcancados", "Faltam", "%Atingido"];
+    const rows = clients.map((c) => [
+      c.name,
+      c.invested,
+      c.metaLeads,
+      c.leadsAchieved,
+      computeRemaining(c),
+      computePercent(c) + "%",
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "metas_trafego_export.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const filtered = clients.filter((c) => c.name.toLowerCase().includes(filter.toLowerCase()));
+  const { totalInvested, totalMeta, totalLeads, totalRemaining, avgPercent } = totals();
+
+  return (
+    <div className="min-h-screen bg-gray-50 p-6">
+      <div className="max-w-6xl mx-auto">
+        <header className="mb-6">
+          <h1 className="text-2xl font-bold">Dashboard Metas - Tráfego Pago</h1>
+          <p className="text-sm text-gray-600 mt-1">Gerencie clientes, investimento, metas e acompanhe quantos leads faltam.</p>
+        </header>
+
+        <section className="bg-white p-4 rounded-lg shadow mb-6">
+          <form onSubmit={handleAddOrUpdate} className="grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+            <div className="md:col-span-2">
+              <label className="block text-xs font-medium text-gray-700">Cliente</label>
+              <input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 block w-full rounded border-gray-200 shadow-sm p-2" placeholder="Nome do cliente" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700">Valor Investido (R$)</label>
+              <input type="number" value={form.invested} onChange={(e) => setForm({ ...form, invested: e.target.value })} className="mt-1 block w-full rounded border-gray-200 shadow-sm p-2" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700">Meta de Leads</label>
+              <input type="number" value={form.metaLeads} onChange={(e) => setForm({ ...form, metaLeads: e.target.value })} className="mt-1 block w-full rounded border-gray-200 shadow-sm p-2" />
+            </div>
+
+            <div>
+              <label className="block text-xs font-medium text-gray-700">Leads Alcançados</label>
+              <input type="number" value={form.leadsAchieved} onChange={(e) => setForm({ ...form, leadsAchieved: e.target.value })} className="mt-1 block w-full rounded border-gray-200 shadow-sm p-2" />
+            </div>
+
+            <div className="md:col-span-5 flex gap-2">
+              <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded shadow">{editingId ? "Salvar alterações" : "Adicionar cliente"}</button>
+              <button type="button" onClick={resetForm} className="px-4 py-2 bg-gray-200 rounded">Limpar</button>
+              <button type="button" onClick={() => { setForm({ name: "", invested: "", metaLeads: "", leadsAchieved: "" }); setEditingId(null);} } className="px-4 py-2 bg-gray-50 rounded border">Novo</button>
+            </div>
+          </form>
+        </section>
+
+        <section className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-white p-4 rounded shadow">
+            <div className="text-sm text-gray-500">Investimento total</div>
+            <div className="text-xl font-semibold mt-1">R$ {Number(totalInvested).toLocaleString('pt-BR')}</div>
+          </div>
+
+          <div className="bg-white p-4 rounded shadow">
+            <div className="text-sm text-gray-500">Leads (alvo / alcançados)</div>
+            <div className="text-xl font-semibold mt-1">{totalLeads} / {totalMeta}</div>
+          </div>
+
+          <div className="bg-white p-4 rounded shadow">
+            <div className="text-sm text-gray-500">Média % atingida</div>
+            <div className="text-xl font-semibold mt-1">{avgPercent}%</div>
+          </div>
+        </section>
+
+        <section className="bg-white p-4 rounded shadow">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold">Clientes ({clients.length})</h2>
+            <div className="flex items-center gap-2">
+              <input placeholder="Filtrar por nome" value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded border-gray-200 p-2" />
+              <button onClick={exportCSV} className="px-3 py-2 bg-green-600 text-white rounded">Exportar CSV</button>
+              <button onClick={() => { if (confirm('Limpar todos os clientes?')) { setClients([]); } }} className="px-3 py-2 bg-red-50 border rounded">Limpar</button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full table-auto border-collapse">
+              <thead>
+                <tr className="text-left text-xs text-gray-600 border-b">
+                  <th className="p-2">Cliente</th>
+                  <th className="p-2">Investido (R$)</th>
+                  <th className="p-2">Meta</th>
+                  <th className="p-2">Alcançados</th>
+                  <th className="p-2">Faltam</th>
+                  <th className="p-2">%</th>
+                  <th className="p-2">Status</th>
+                  <th className="p-2">Ações</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((c) => {
+                  const remaining = computeRemaining(c);
+                  const percent = computePercent(c);
+                  const status = percent >= 100 ? "Atingida" : percent >= 60 ? "Em andamento" : "Abaixo do esperado";
+                  return (
+                    <tr key={c.id} className="border-b hover:bg-gray-50">
+                      <td className="p-2 align-top font-medium">{c.name}</td>
+                      <td className="p-2 align-top">R$ {Number(c.invested).toLocaleString('pt-BR')}</td>
+                      <td className="p-2 align-top">{c.metaLeads}</td>
+                      <td className="p-2 align-top">{c.leadsAchieved}</td>
+                      <td className="p-2 align-top">{remaining}</td>
+                      <td className="p-2 align-top w-40">
+                        <div className="text-sm">{percent}%</div>
+                        <div className="w-full bg-gray-200 h-2 rounded mt-1">
+                          <div style={{ width: `${percent}%` }} className={`h-2 rounded ${percent >= 100 ? 'bg-green-500' : percent >= 60 ? 'bg-yellow-400' : 'bg-red-400'}`}></div>
+                        </div>
+                      </td>
+                      <td className="p-2 align-top">
+                        <span className={`px-2 py-1 rounded text-xs ${status === 'Atingida' ? 'bg-green-100 text-green-700' : status === 'Em andamento' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{status}</span>
+                      </td>
+                      <td className="p-2 align-top">
+                        <div className="flex gap-2">
+                          <button onClick={() => handleEdit(c.id)} className="px-2 py-1 bg-blue-50 border rounded text-sm">Editar</button>
+                          <button onClick={() => handleDelete(c.id)} className="px-2 py-1 bg-red-50 border rounded text-sm">Remover</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {clients.length === 0 && (
+            <div className="text-center text-sm text-gray-500 p-6">Nenhum cliente cadastrado. Use o formulário acima para adicionar.</div>
+          )}
+
+        </section>
+
+        <footer className="text-sm text-gray-500 mt-6">Dica: para publicar no GitHub Pages crie um repositório, adicione o projeto React e configure a branch gh-pages com um deploy (ou use Vercel/Netlify). Dados atuais são salvos no navegador.</footer>
+      </div>
+    </div>
+  );
+}

@@ -4,8 +4,6 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard Metas - Tráfego Pago</title>
-
-  <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col items-center p-6">
@@ -15,23 +13,36 @@
   <!-- Formulário -->
   <div class="bg-white shadow-md rounded-lg p-4 w-full max-w-5xl flex flex-wrap gap-2 justify-between mb-4">
     <input id="cliente" class="border border-gray-300 rounded-md p-2 flex-1" placeholder="Nome do cliente">
+    <input id="periodo" class="border border-gray-300 rounded-md p-2 flex-1" placeholder="Período da campanha (ex: 01/11 - 30/11)">
     <input id="investido" type="number" class="border border-gray-300 rounded-md p-2 flex-1" placeholder="Valor investido (R$)">
     <input id="meta" type="number" class="border border-gray-300 rounded-md p-2 flex-1" placeholder="Meta de leads">
     <input id="alcançado" type="number" class="border border-gray-300 rounded-md p-2 flex-1" placeholder="Leads alcançados">
     <button onclick="adicionarCliente()" class="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition">Adicionar</button>
   </div>
 
+  <!-- Campo de pesquisa -->
+  <div class="w-full max-w-5xl mb-4">
+    <input 
+      id="pesquisa" 
+      oninput="filtrarClientes()" 
+      class="w-full border border-gray-300 rounded-md p-2 shadow-sm" 
+      placeholder="🔍 Pesquisar cliente..."
+    >
+  </div>
+
   <!-- Tabela -->
-  <div class="w-full max-w-5xl bg-white shadow-md rounded-lg overflow-hidden">
+  <div class="w-full max-w-6xl bg-white shadow-md rounded-lg overflow-hidden">
     <table class="w-full text-center border-collapse">
       <thead class="bg-blue-600 text-white">
         <tr>
           <th class="p-3">Cliente</th>
+          <th class="p-3">Período</th>
           <th class="p-3">Investido (R$)</th>
           <th class="p-3">Meta</th>
           <th class="p-3">Alcançado</th>
           <th class="p-3">Faltam</th>
           <th class="p-3">% Atingido</th>
+          <th class="p-3">Ações</th>
         </tr>
       </thead>
       <tbody id="tabela" class="divide-y divide-gray-200"></tbody>
@@ -40,9 +51,12 @@
 
   <script>
     const tabela = document.querySelector("#tabela");
+    let clientes = [];
+    let editIndex = null;
 
     function adicionarCliente() {
       const cliente = document.getElementById("cliente").value.trim();
+      const periodo = document.getElementById("periodo").value.trim();
       const investido = Number(document.getElementById("investido").value);
       const meta = Number(document.getElementById("meta").value);
       const alcançado = Number(document.getElementById("alcançado").value);
@@ -52,27 +66,76 @@
       const faltam = Math.max(0, meta - alcançado);
       const porcentagem = meta > 0 ? Math.round((alcançado / meta) * 100) : 0;
 
-      const linha = document.createElement("tr");
-      linha.classList.add("hover:bg-gray-50", "transition");
-      linha.innerHTML = `
-        <td class="p-3 font-medium text-gray-800">${cliente}</td>
-        <td class="p-3 text-gray-700">R$ ${investido.toLocaleString('pt-BR')}</td>
-        <td class="p-3 text-gray-700">${meta}</td>
-        <td class="p-3 text-gray-700">${alcançado}</td>
-        <td class="p-3 text-gray-700">${faltam}</td>
-        <td class="p-3">
-          <div class="w-full bg-gray-200 rounded-full h-4">
-            <div class="bg-green-500 h-4 rounded-full" style="width: ${porcentagem}%"></div>
-          </div>
-          <span class="text-sm text-gray-600">${porcentagem}%</span>
-        </td>
-      `;
-      tabela.appendChild(linha);
+      const novoCliente = { cliente, periodo, investido, meta, alcançado, faltam, porcentagem };
 
+      if (editIndex !== null) {
+        clientes[editIndex] = novoCliente;
+        editIndex = null;
+      } else {
+        clientes.push(novoCliente);
+      }
+
+      atualizarTabela();
+      limparCampos();
+    }
+
+    function limparCampos() {
       document.getElementById("cliente").value = "";
+      document.getElementById("periodo").value = "";
       document.getElementById("investido").value = "";
       document.getElementById("meta").value = "";
       document.getElementById("alcançado").value = "";
+    }
+
+    function atualizarTabela(lista = clientes) {
+      tabela.innerHTML = "";
+      lista.forEach((c, i) => {
+        const linha = document.createElement("tr");
+        linha.classList.add("hover:bg-gray-50", "transition");
+        linha.innerHTML = `
+          <td class="p-3 font-medium text-gray-800">${c.cliente}</td>
+          <td class="p-3 text-gray-700">${c.periodo}</td>
+          <td class="p-3 text-gray-700">R$ ${c.investido.toLocaleString('pt-BR')}</td>
+          <td class="p-3 text-gray-700">${c.meta}</td>
+          <td class="p-3 text-gray-700">${c.alcançado}</td>
+          <td class="p-3 text-gray-700">${c.faltam}</td>
+          <td class="p-3">
+            <div class="w-full bg-gray-200 rounded-full h-4">
+              <div class="bg-green-500 h-4 rounded-full" style="width: ${c.porcentagem}%"></div>
+            </div>
+            <span class="text-sm text-gray-600">${c.porcentagem}%</span>
+          </td>
+          <td class="p-3 flex justify-center gap-2">
+            <button onclick="editarCliente(${i})" class="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded-md text-sm">Editar</button>
+            <button onclick="removerCliente(${i})" class="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-sm">Excluir</button>
+          </td>
+        `;
+        tabela.appendChild(linha);
+      });
+    }
+
+    function editarCliente(i) {
+      const c = clientes[i];
+      document.getElementById("cliente").value = c.cliente;
+      document.getElementById("periodo").value = c.periodo;
+      document.getElementById("investido").value = c.investido;
+      document.getElementById("meta").value = c.meta;
+      document.getElementById("alcançado").value = c.alcançado;
+      editIndex = i;
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
+    function removerCliente(i) {
+      if (confirm("Deseja remover este cliente?")) {
+        clientes.splice(i, 1);
+        atualizarTabela();
+      }
+    }
+
+    function filtrarClientes() {
+      const termo = document.getElementById("pesquisa").value.toLowerCase();
+      const filtrados = clientes.filter(c => c.cliente.toLowerCase().includes(termo));
+      atualizarTabela(filtrados);
     }
   </script>
 
